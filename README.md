@@ -53,3 +53,14 @@ Terminal operations, which eagerly (but perhaps incompletely) evaluate include
   * `toArray` (two forms, essentially the same as Scala `toArray`)
 
 Streams also have methods to switch between parallel and sequential processing, and between ordered and unordered representations.
+
+### Goals
+
+Scala iteroperability with Java 8 Streams should accomplish four goals.
+
+1. Seamlessly use Java 8 Streams as in Java 8, but with the syntactic advantages of Scala.
+2. Provide the full set of Scala collections methods transparently and with minimal runtime penalty on top of Java 8 Streams.
+3. Generate `Spliterator`s for Scala collections that are compatible with Java 8 Streams and can be used in Java.
+4. Reduce the specialization burden for `Object` vs. `double`, `int`, or `long`.
+
+Special care must be taken to avoid superfluous boxing of `Array`-based streams.  Note that `java.lang.Arrays` contains a profusion of manually specialized methods to accomplish this in Java.
