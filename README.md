@@ -56,11 +56,38 @@ Streams also have methods to switch between parallel and sequential processing, 
 
 ### Goals
 
-Scala iteroperability with Java 8 Streams should accomplish four goals.
+Scala iteroperability with Java 8 Streams should accomplish five goals.
 
 1. Seamlessly use Java 8 Streams as in Java 8, but with the syntactic advantages of Scala.
-2. Provide the full set of Scala collections methods transparently and with minimal runtime penalty on top of Java 8 Streams.
-3. Generate `Spliterator`s for Scala collections that are compatible with Java 8 Streams and can be used in Java.
-4. Reduce the specialization burden for `Object` vs. `double`, `int`, or `long`.
+2. Easily use Java 8 Streams as a Scala collection (perhaps behind an `asScala` guard).
+3. Provide the full set of Scala collections methods transparently and with minimal runtime penalty on top of Java 8 Streams.  May or may not be the same as 2.
+4. Generate `Spliterator`s for Scala collections that are compatible with Java 8 Streams and can be used in Java or Scala.  In particular, this will enable all of Scala's collections to run operations in parallel.
+5. Reduce the specialization burden for `Object` vs. `double`, `int`, or `long`.
 
 Special care must be taken to avoid superfluous boxing of `Array`-based streams.  Note that `java.lang.Arrays` contains a profusion of manually specialized methods to accomplish this in Java.
+
+### Architecture
+
+#### Goal 1 -- Use Java 8 Streams within Scala
+
+This should not require any extra tooling; basic Scala-Java compatibility should suffice.  However, comprehensive unit tests should be written to make sure they do suffice.
+
+#### Goal 2 -- Present Java 8 Streams as a Scala collection
+
+An implicit value class can be used to add an `asScala` method to each `Stream` class.  This method can instantiate a wrapper class that implements the Scala methods in terms of the Java ones (extending `TraversableOnce`, most likely).
+
+#### Goal 3 -- Scala collections transparently and with low overhead on Java 8 Streams
+
+Implementing Scala methods in terms of Java 8 Stream methods should not require any state.  Thus, a value class should be able to implement the Scala methods, possibly with type classes to provide specialized functionality for Double etc. specialized versions.
+
+#### Goal 4 -- `Spliterator`s for Scala collections
+
+This is one of the most challenging goals to achieve since in many cases acceptable performance requires an implementation that has access to private methods.
+
+Adding the functionality using implicit conversion would reduce the intersection with the rest of the library, though it would need to be determined to what extent pattern matching would be needed to figure out the underlying type of the collection.  By making key methods private[collection] instead of private, adequate safety should be maintained while still allowing the implicit conversion strategy to work.
+
+#### Goal 5 -- Reduced burden for manual specialization
+
+Should investigate replacing the profusion of manually defined methods in Java with Scala specialized variants that defer to type class selected implementations.  Note that Java does _not_ allow you to abstract over type of stream, despite all four interfaces having nearly-identical method names (e.g. `map` on `IntStream` maps from `Int` to `Int`, and there is a `mapToObj` instead of the `mapToInt` on object `Stream`).
+
+This may be too awkward to succeed, but inspiration can be taken from Spire.
