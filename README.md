@@ -63,6 +63,7 @@ Scala iteroperability with Java 8 Streams should accomplish five goals.
 3. Provide the full set of Scala collections methods transparently and with minimal runtime penalty on top of Java 8 Streams.  May or may not be the same as 2.
 4. Generate `Spliterator`s for Scala collections that are compatible with Java 8 Streams and can be used in Java or Scala.  In particular, this will enable all of Scala's collections to run operations in parallel.
 5. Reduce the specialization burden for `Object` vs. `double`, `int`, or `long`.
+6. Provide ancillary interoperability for Java 8 `Optional` and `PrimitiveIterator`, which are used by streams.
 
 Special care must be taken to avoid superfluous boxing of `Array`-based streams.  Note that `java.lang.Arrays` contains a profusion of manually specialized methods to accomplish this in Java.
 
@@ -76,9 +77,13 @@ This should not require any extra tooling; basic Scala-Java compatibility should
 
 An implicit value class can be used to add an `asScala` method to each `Stream` class.  This method can instantiate a wrapper class that implements the Scala methods in terms of the Java ones (extending `TraversableOnce`, most likely).
 
+To be determined: do we wrap only `Stream`, requiring calls to `boxed` to work with `IntStream` etc., or do we wrap directly?  What do we do about the lack of specialization in Scala collections?
+
 #### Goal 3 -- Scala collections transparently and with low overhead on Java 8 Streams
 
 Implementing Scala methods in terms of Java 8 Stream methods should not require any state.  Thus, a value class should be able to implement the Scala methods, possibly with type classes to provide specialized functionality for Double etc. specialized versions.
+
+Note that to keep the JVM from having to do too much work, the value classes should @inline as many methods as practical, and the library should (as usual) be compiled with -optimize.  The inlining burden can quickly grow beyond the JVM's capability to handle.
 
 #### Goal 4 -- `Spliterator`s for Scala collections
 
@@ -91,3 +96,13 @@ Adding the functionality using implicit conversion would reduce the intersection
 Should investigate replacing the profusion of manually defined methods in Java with Scala specialized variants that defer to type class selected implementations.  Note that Java does _not_ allow you to abstract over type of stream, despite all four interfaces having nearly-identical method names (e.g. `map` on `IntStream` maps from `Int` to `Int`, and there is a `mapToObj` instead of the `mapToInt` on object `Stream`).
 
 This may be too awkward to succeed, but inspiration can be taken from Spire.
+
+#### Goal 6 -- Compatibility for `java.util.Optional` and `java.util.PrimitiveIterator`
+
+Neither `Optional` nor `PrimitiveIterator` have particularly engaging interfaces.
+
+`PrimitiveIterator` adds one method, `forEachRemaining` with a `T_CONS` type, and the specialized variants `.OfInt` etc. specify manually specified subinterfaces of `Consumer` to perform the operation, plus they provide e.g. `nextInt` to get the next `int` (for `.OfInt`).  Unless we can provide specialized Scala iterators, there is little point customizing anything here save to provide a mapping from collections typed with `[Int]` so that we can use them as a source for `IntStream`.
+
+`Optional` follows the same pattern of specialization as `Stream` itself.  Providing conversions to and from Scala `Option` are probably adequate.
+
+However, if the pattern for converting manually specialized implementations into Scala `@specialized` ones works particularly smoothly, we may wish to consider using the same strategy to specialize parts of the Scala library, and then provide more robust interoperability.  (This is probably best deferred for 2.13, however.)
