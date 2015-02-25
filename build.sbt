@@ -1,5 +1,5 @@
 scalaVersion := "2.11.5"
 
-scalaHome := Some(file("/home/kerrr/code/scala/typesafe/scala/build/pack"))
+//scalaHome := Some(file("/home/kerrr/code/scala/typesafe/scala/build/pack"))
 
-scalacOptions ++= Seq("-optimize")
+scalacOptions ++= Seq("-Xexperimental", "-optimize")

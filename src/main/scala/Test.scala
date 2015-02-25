@@ -48,8 +48,9 @@ trait Wrap[@specialized(Double) A] extends Any {
   def bar: A
 }
 
+// Strange problem with -Xexperimental
 class WrapOb[A](private val ob: Ob[A]) extends AnyVal with Wrap[A] {
-  @inline def foo = new WrapFooAny(ob.foo)
+  @inline def foo = new WrapFooAny[A](ob.foo.aye)  // Drop the aye as soon as we can
   @inline def bar = ob.bar
   def baz(a: A) { ob.baz(a) }
 }
@@ -59,6 +60,7 @@ class WrapDbl(private val db: Dbl) extends AnyVal with Wrap[Double] {
   @inline def bar = db.bar
   def baz(d: Double) { db.baz(d) }
 }
+
 
 object Test {
   def main(args: Array[String]) {
