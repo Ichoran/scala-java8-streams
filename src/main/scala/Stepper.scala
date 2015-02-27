@@ -2,7 +2,88 @@ package scala.collection
 
 package j8 {
 
-abstract class Stepper[A] extends TraversableOnce[A] with java.util.Spliterator[A] { self =>
+trait ManualSpec[@specialized(Double, Int, Long) A, SI] {
+  def apply(sw: Sweeper[A]): SI
+}
+
+trait Sweeper[@specialized(Double, Int, Long) A] { self =>
+  def hasNext: Boolean
+  def next: A
+  def divideOrNull: Sweeper[A]
+  def estimateSize: Long
+  
+  def toIterator = new Iterator[A] {
+    def hasNext = self.hasNext
+    def next = self.next
+  }
+  def toSpliterator[SI](implicit ms: ManualSpec[A, SI]): SI = ms(self)
+}
+
+class SweepList[A](list: List[A]) extends Sweeper[A] {
+  private[this] var myList = list
+  def hasNext = myList.nonEmpty
+  def next = { val ans = myList.head; myList = myList.tail; ans }
+  def divideOrNull = null
+  def estimateSize = if (hasNext) Long.MaxValue else 0
+}
+
+class SweepArray[A](array: Array[A]) extends Sweeper[A] {
+  private[this] var i = 0
+  def hasNext = i < array.length
+  def next = if (hasNext) { val ans = array(i); i += 1; ans } else ???
+  def divideOrNull = null
+  def estimateSize = array.length - i
+}
+
+class SweepIterator[A](it: Iterator[A]) extends Sweeper[A] {
+  def hasNext = it.hasNext
+  def next = it.next
+  def divideOrNull = null
+  def estimateSize = if (hasNext) Long.MaxValue else 0
+}
+
+class SpliterateList[A](list: List[A]) extends java.util.Spliterator[A] {
+  private[this] var myList = list
+  def tryAdvance(c: java.util.function.Consumer[_ >: A]): Boolean = if (myList.isEmpty) false else {
+    val h = myList.head
+    myList = myList.tail
+    c.accept(h)
+    true
+  }
+  def trySplit() = null
+  def characteristics() = java.util.Spliterator.ORDERED
+  def estimateSize = if (myList.isEmpty) 0 else Long.MaxValue
+}
+
+class SpliterateArray[A](array: Array[A]) extends java.util.Spliterator[A] {
+  private[this] var i = 0
+  def tryAdvance(c: java.util.function.Consumer[_ >: A]): Boolean = {
+    if (i < array.length) {
+      c.accept(array(i))
+      i += 1
+      true
+    }
+    else false
+  }
+  def trySplit() = null
+  def characteristics() = java.util.Spliterator.ORDERED | java.util.Spliterator.SIZED | java.util.Spliterator.SUBSIZED
+  def estimateSize = array.length - i
+}
+
+class SpliterateIterator[A](it: Iterator[A]) extends java.util.Spliterator[A] {
+  def tryAdvance(c: java.util.function.Consumer[_ >: A]): Boolean = {
+    if (it.hasNext) {
+      c.accept(it.next)
+      true
+    }
+    else false
+  }
+  def trySplit() = null
+  def characteristics() = java.util.Spliterator.ORDERED
+  def estimateSize = if (it.hasNext) Long.MaxValue else 0
+}
+
+trait Stepper[A] extends TraversableOnce[A] with java.util.Spliterator[A] { self =>
   def step[U](f: A => U): Boolean
   
   def tryAdvance(c: java.util.function.Consumer[_ >: A]): Boolean = step(c accept _)
@@ -81,6 +162,15 @@ trait LowerPriorityJ8Implicits {
 }
 
 trait LowPriorityJ8Implicits extends LowerPriorityJ8Implicits {
+  implicit def mkObjectSpliteratorSpec[A] = new ManualSpec[A, java.util.Spliterator[A]] {
+    def apply(sw: Sweeper[A]) = new java.util.Spliterator[A] {
+      def characteristics = java.util.Spliterator.ORDERED
+      def estimateSize = sw.estimateSize
+      def tryAdvance(f: java.util.function.Consumer[_ >: A]) = if (sw.hasNext) { f.accept(sw.next); true } else false
+      def trySplit = { val div = sw.divideOrNull; if (div == null) null else apply(div) }
+    }
+  }
+  
   implicit def defaultSpliteratorEnrichment[A](spliterator: java.util.Spliterator[A]) = new EnrichObjectSpliterator(spliterator)
 
   implicit def mkJavaObjectStreamToDoubleStreamMap[A] =
@@ -118,6 +208,15 @@ trait MapAsJavaSpecialized[@specialized(Double, Int, Long) A, @specialized(Doubl
 
 
 package object j8 extends LowPriorityJ8Implicits {
+  implicit object DoubleSpliteratorSpec extends ManualSpec[Double, java.util.Spliterator.OfDouble] {
+    def apply(sw: Sweeper[Double]) = new java.util.Spliterator.OfDouble {
+      def characteristics = java.util.Spliterator.ORDERED
+      def estimateSize = sw.estimateSize
+      def tryAdvance(f: java.util.function.DoubleConsumer): Boolean = if (sw.hasNext) { f.accept(sw.next); true } else false
+      def trySplit() = { val div = sw.divideOrNull; if (div == null) null else apply(div) }
+    }
+  }
+
   implicit final class EnrichDoubleSpliterator(private val underlying: java.util.Spliterator.OfDouble) extends AnyVal {
     @inline def stream = java.util.stream.StreamSupport.doubleStream(underlying, false)
     @inline def parallelStream = java.util.stream.StreamSupport.doubleStream(underlying, true)
